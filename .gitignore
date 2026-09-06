@@ -1,0 +1,43 @@
+# --- Go build artifacts -----------------------------------------------------
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+/bin/
+/build/
+/dist/
+/tmp/
+
+# --- Coverage & profiling ---------------------------------------------------
+*.out
+coverage.*
+*.prof
+
+# --- Environment files ------------------------------------------------------
+# Every tier is ignored; only the committed template below is tracked.
+.env
+.env.*
+!.env.example
+
+# --- Logs, uploads & local data ---------------------------------------------
+*.log
+logs/
+uploads/
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Editors & OS -----------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Local tooling ----------------------------------------------------------
+# air writes its build log here.
+air.log
