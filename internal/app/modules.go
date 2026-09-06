@@ -18,6 +18,7 @@ import (
 
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/config"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/auth"
+	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/health"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/messages"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/users"
@@ -55,6 +56,7 @@ var Modules = fx.Options(
 	roles.Module,
 	messages.Module,
 	auth.Module,
+	health.Module,
 
 	// Wrap every mail.Mailer so each send is recorded. This sits here, at the
 	// root, rather than inside messages.Module: fx scopes a decoration to the

@@ -3,12 +3,11 @@
 package main
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 
 	authapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/auth/api"
+	healthapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/health/api"
 	messageapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/messages/api"
 	roleapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles/api"
 	roledomain "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles/domain"
@@ -46,6 +45,7 @@ func registerRoutes(
 	userHandler *userapi.UserHandler,
 	roleHandler *roleapi.RoleHandler,
 	notificationHandler *messageapi.NotificationHandler,
+	healthHandler *healthapi.HealthHandler,
 ) {
 	// The global chain, in the order documented in docs/ARCHITECTURE.md. The
 	// order is load-bearing and is stated once, here:
@@ -84,12 +84,16 @@ func registerRoutes(
 	// one: the global limit is sized for a person using the application, and
 	// credential stuffing is not that.
 
-	engine.GET("/healthz", func(c *gin.Context) {
-		// A liveness probe with no dependencies: it answers if the process is
-		// running at all. The readiness probe, which checks the database, comes
-		// with the health module.
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	// Probes. Unauthenticated by necessity — an orchestrator holds no
+	// credential — and exempt from rate limiting, because a probe that gets a
+	// 429 is a probe that failed. See middleware.IsProbePath.
+	//
+	// Liveness checks nothing and readiness checks the dependencies, which is
+	// the split that matters: a database outage should take instances out of
+	// rotation, not restart them.
+	engine.GET(middleware.PathLiveness, healthHandler.Live)
+	engine.GET(middleware.PathReadiness, healthHandler.Ready)
+	engine.GET(middleware.PathHealth, healthHandler.Ready)
 
 	var auth *gin.RouterGroup = engine.Group("/api/auth", gin.HandlerFunc(global.AuthRateLimit))
 	{

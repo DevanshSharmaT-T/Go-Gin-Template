@@ -262,6 +262,36 @@ before that phase.
 - Request bodies are capped twice: the declared `Content-Length` is refused outright, and a client
   that lies about it or sends chunked is stopped mid-read by `MaxBytesReader`.
 
+**Phase 7b — liveness and readiness probes**
+
+- `internal/modules/health` — the health module, with no `domain` and no `infra` because it owns no
+  entity and stores nothing; it reports on dependencies other modules own.
+- **Liveness (`/healthz`) checks nothing.** That is the point of it: it answers "is this process
+  wedged, should it be restarted?". Checking the database there is the classic mistake — an outage
+  would fail every instance's liveness probe, the orchestrator would restart them all, and
+  restarting an application server does not fix a database.
+- **Readiness (`/readyz`, and `/api/health`) checks the dependencies** — the database pool and the
+  permission registry — and answers 503 when one fails. That takes an instance out of rotation
+  without restarting it, which is the right response to "the database is unreachable from here": the
+  process is fine and will serve again when the dependency returns. A cold permission registry fails
+  readiness too, since authorization would otherwise refuse every gated route and look like a
+  permissions bug.
+- **Probes are exempt from rate limiting.** A probe that gets a 429 is a probe that failed: the
+  instance leaves rotation, its traffic moves to the others, and they become likelier to limit their
+  own probes. It cascades exactly when the service is already under load — and it is not
+  hypothetical, because with `TRUSTED_PROXIES` unset every request behind a load balancer shares one
+  bucket. The exemption covers rate limiting only; probes still pass through recovery, the request
+  ID, logging and the timeout.
+
+### Security
+
+- **The health responses carry no diagnostic detail** — no version, no hostname, no dependency
+  address, no error text. A failing check reports its name, that it failed, and how long it took;
+  the reason goes to the log. These endpoints are unauthenticated by necessity, since an
+  orchestrator holds no credential, so everything they return is public. A health endpoint is a
+  common source of quiet information disclosure precisely because it is the one URL people expose
+  without thinking about who can read it.
+
 ### Changed
 
 - `fx.Decorate` scoping is now documented as the fifth fx wiring rule in `ARCHITECTURE.md`. A
@@ -335,5 +365,4 @@ before that phase.
 
 | Phase | Contents |
 |---|---|
-| 7 | Middleware and health — CORS allow-list, request ID, rate limiting, timeouts, probes |
 | 8 | Tests and tooling — harness, fixtures, mocks, the three suites, Docker, Swagger |

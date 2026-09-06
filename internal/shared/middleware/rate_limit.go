@@ -167,6 +167,13 @@ func NewAuthRateLimitMiddleware(cfg *config.Config) AuthRateLimitMiddleware {
 
 // enforce applies a store to a request.
 func enforce(c *gin.Context, store *limiterStore) {
+	// Health probes are never limited. See IsProbePath for why that is an
+	// availability requirement and not a convenience.
+	if IsProbePath(c.FullPath()) {
+		c.Next()
+		return
+	}
+
 	var allowed bool
 	var wait time.Duration
 	allowed, wait = store.allow(c.ClientIP())

@@ -490,3 +490,57 @@ func TestRecovery_LetsAHealthyRequestThrough(t *testing.T) {
 		t.Fatalf("a healthy request was disturbed: %d %q", rec.Code, rec.Body.String())
 	}
 }
+
+// --- probe exemption ---------------------------------------------------------
+
+// **An availability property, not a convenience.** A probe that gets a 429 is a
+// probe that failed: the instance leaves rotation, its traffic moves to the
+// others, and they become more likely to limit their own probes. It cascades,
+// and it does so exactly when the service is already under load.
+func TestRateLimit_NeverLimitsProbes(t *testing.T) {
+	cfg := &config.Config{RateLimit: config.RateLimit{Enabled: true, RPS: 1, Burst: 1}}
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewRateLimitMiddleware(cfg)))
+	router.GET(PathLiveness, func(c *gin.Context) { c.Status(http.StatusOK) })
+	router.GET(PathReadiness, func(c *gin.Context) { c.Status(http.StatusOK) })
+	router.GET(PathHealth, func(c *gin.Context) { c.Status(http.StatusOK) })
+	router.GET("/api/normal", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	request := func(path string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.RemoteAddr = "203.0.113.50:1234"
+		router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// Spend the budget many times over on every probe path.
+	for _, path := range []string{PathLiveness, PathReadiness, PathHealth} {
+		for i := 0; i < 20; i++ {
+			if got := request(path); got != http.StatusOK {
+				t.Fatalf("probe %s was rate limited on request %d: %d", path, i, got)
+			}
+		}
+	}
+
+	// A normal route, from the same client, is still limited — the exemption is
+	// for the probes and not a hole in the limiter.
+	request("/api/normal")
+	if got := request("/api/normal"); got != http.StatusTooManyRequests {
+		t.Fatalf("the exemption leaked to a normal route: %d", got)
+	}
+}
+
+func TestIsProbePath(t *testing.T) {
+	for _, path := range []string{PathLiveness, PathReadiness, PathHealth} {
+		if !IsProbePath(path) {
+			t.Errorf("%q should be a probe path", path)
+		}
+	}
+	for _, path := range []string{"/api/users", "/api/health/other", "", "/"} {
+		if IsProbePath(path) {
+			t.Errorf("%q should not be a probe path", path)
+		}
+	}
+}
