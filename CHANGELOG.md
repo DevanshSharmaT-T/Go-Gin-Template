@@ -41,11 +41,43 @@ lists what is still to come.
 - GitHub Actions CI (build · vet · test · integration · e2e · govulncheck · lint) and a pull-request
   template.
 
+**Phase 2 — Go module and foundations**
+
+- `go.mod` declaring module `github.com/DevanshSharmaT-T/Go-Gin-Template` on Go 1.25, with three
+  direct dependencies: `joho/godotenv`, `rs/zerolog` and `getsentry/sentry-go`.
+- `internal/shared/errors` — the `AppError` kernel: 22 classifications, one type-to-HTTP-status
+  mapping, and 22 constructors. `Response()` redacts the message and drops details for 5xx so
+  operator-facing text and driver errors cannot reach a client, while the cause stays reachable for
+  the log. Re-exports `As`/`Is`/`Join`/`Unwrap` so callers do not need the standard `errors` too.
+- `internal/config` — tiered `.env` loading (`.env` → `.env.$GO_ENV` → `.env.$GO_ENV.local`) with
+  typed parsing and startup validation. Problems are accumulated and reported together rather than
+  one per restart. An explicitly exported `GO_ENV` is preserved across the tier load, so
+  `GO_ENV=production ./server` cannot be downgraded by a stale line in `.env`.
+- `internal/shared/logger` — zerolog setup (JSON or console), a request-scoped logger carried on
+  `context.Context`, and optional Sentry initialisation that is a no-op without a DSN.
+- 54 package-local tests covering the status mapping, 5xx redaction, the wire format, every
+  validation rule, and the logger's context fallback.
+- `test/integration` and `test/e2e` package declarations, so the tagged CI suites resolve instead
+  of failing on "no packages to test".
+
+### Changed
+
+- `.env.example` — `GO_ENV` now documents `test` as a fourth valid tier and notes that it is
+  validated at startup.
+
+### Security
+
+- Configuration that would be unsafe is now a startup failure rather than a runtime surprise:
+  a `JWT_SECRET` that is empty, under 32 characters or still the `CHANGE_ME` placeholder;
+  `CORS_ALLOWED_ORIGINS=*` combined with `CORS_ALLOW_CREDENTIALS=true`; a `REQUEST_TIMEOUT` that
+  is not shorter than `SERVER_WRITE_TIMEOUT`; a non-positive body-size cap; an unparseable entry
+  in `TRUSTED_PROXIES`; and a half-configured Google OAuth credential pair.
+- Secret values are never echoed into a configuration error message.
+
 ### Planned
 
 | Phase | Contents |
 |---|---|
-| 2 | Go module and foundations — `go.mod`, tiered config, zerolog logger, the `AppError` kernel |
 | 3 | Database — GORM connector, versioned migrations, seeders, fx value groups |
 | 4 | Users and auth — the user module, JWT, bcrypt, the HMAC token codec |
 | 5 | RBAC — roles, permissions, the `Authorize` middleware |

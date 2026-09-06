@@ -40,10 +40,11 @@ dependency is present and what the alternative would have cost;
 conventions. You are meant to disagree with some of it and change those parts — that is easier when
 the reasoning is on the page rather than in someone's head.
 
-> **Status.** The template is being built in phases. This is **Phase 1: structure and
-> documentation** — the directory skeleton, the tooling and the full documentation set are in place;
-> the Go implementation lands in the phases that follow. See [`CHANGELOG.md`](CHANGELOG.md) for what
-> exists today.
+> **Status.** The template is being built in phases, and is **not runnable yet**. In place today:
+> the directory skeleton, the tooling and documentation (phase 1), and the Go module with the
+> configuration loader, the structured logger and the `AppError` kernel (phase 2). The database
+> layer, the modules and the entry point land in the phases that follow, so `make run` has nothing
+> to run until then. See [`CHANGELOG.md`](CHANGELOG.md) for exactly what exists and what is next.
 
 ---
 
