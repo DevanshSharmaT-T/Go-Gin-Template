@@ -22,5 +22,17 @@ var Module = fx.Module("middleware",
 	fx.Provide(
 		NewTokenCodec,
 		JWTMiddleware,
+
+		// Every other middleware has a named type, for the reason above. The
+		// order they are installed in is fixed in cmd/api, not here — fx works
+		// out construction order, not execution order.
+		NewRecoveryMiddleware,
+		NewRequestIDMiddleware,
+		NewLoggingMiddleware,
+		NewCORSMiddleware,
+		NewBodyLimitMiddleware,
+		NewRateLimitMiddleware,
+		NewAuthRateLimitMiddleware,
+		NewTimeoutMiddleware,
 	),
 )

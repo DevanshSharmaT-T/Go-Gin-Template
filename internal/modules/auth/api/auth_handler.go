@@ -9,6 +9,7 @@ import (
 
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/auth/service"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/errors"
+	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/middleware"
 )
 
 // AuthHandler is the transport layer for the credential endpoints.
@@ -130,7 +131,11 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // — and the safe reading of a bug is that it is our fault, so errors.From
 // makes it a 500 with the original kept as the cause for the log.
 func HandleError(c *gin.Context, err error) {
-	var appErr *errors.AppError = errors.From(err)
+	// The request ID is attached here so every error response carries it,
+	// whichever layer produced the error — it is what ties a support report to
+	// a line in the log.
+	var appErr *errors.AppError = errors.From(err).
+		WithRequestID(middleware.RequestIDFrom(c))
 	c.JSON(appErr.ToHTTPStatus(), appErr.Response())
 }
 
@@ -143,8 +148,9 @@ func HandleError(c *gin.Context, err error) {
 func bindJSON(c *gin.Context, target any) bool {
 	var err error = c.ShouldBindJSON(target)
 	if err != nil {
-		HandleError(c, errors.NewBadRequestError("the request body is not valid", err).
-			WithDetail("body", err.Error()))
+		// Classified rather than assumed: a body that tripped the size cap is
+		// a 413, not a 400.
+		HandleError(c, middleware.BindError(err))
 		return false
 	}
 	return true

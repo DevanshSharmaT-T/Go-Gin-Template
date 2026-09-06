@@ -228,6 +228,40 @@ before that phase.
 - 6 further integration tests, including one whose only job is to prove the mail decoration is
   actually applied to the module that sends mail.
 
+**Phase 7a — the middleware chain**
+
+- `internal/shared/middleware` — recovery, request ID, request logging, CORS, body limit, rate
+  limiting and request timeouts, installed in `cmd/api` in the order documented in
+  `ARCHITECTURE.md`. Each has a named type, because fx keys providers by type and a second bare
+  `gin.HandlerFunc` collides with the JWT middleware.
+- Every error response now carries `request_id`, whichever layer produced it, and unmatched routes
+  and wrong verbs are classified `AppError`s rather than Gin's plain-text defaults.
+  `HandleMethodNotAllowed` is switched on, without which Gin answers 404 for a known path used with
+  the wrong method and any `NoMethod` handler is dead code.
+- `middleware.BindError` classifies a binding failure, so a body that tripped the size cap is a 413
+  rather than the 400 a malformed body gets.
+
+### Security
+
+- **CORS never echoes an unlisted origin.** Reflecting whatever arrived is the same as having no
+  policy — with credentials enabled, every authenticated endpoint becomes readable by any page the
+  user visits. The match is exact, not a prefix or suffix test, and `Vary: Origin` is set on every
+  response including the ones that get no CORS headers, without which a shared cache can serve an
+  allowed origin's response to a disallowed one.
+- **An inbound `X-Request-ID` is validated before it is logged or echoed.** The header is
+  attacker-controlled and its value goes into every log line for the request: a newline forges log
+  entries, and an unbounded value writes megabytes per request into log storage. Anything outside a
+  short, narrow alphabet is discarded and replaced rather than sanitised in place, since stripping
+  characters silently maps two traces onto one identifier.
+- **Rate-limit buckets are evicted.** A map keyed by client IP with no expiry is a memory leak with
+  an attacker-controlled key — one host cycling through addresses adds an entry per request forever.
+  Buckets idle for ten minutes are swept.
+- **A panic never reaches the response.** Panic values routinely contain a path, a struct dump or a
+  connection string; the value goes to the log and to error tracking, and the caller gets the same
+  generic 500 as any other internal failure.
+- Request bodies are capped twice: the declared `Content-Length` is refused outright, and a client
+  that lies about it or sends chunked is stopped mid-read by `MaxBytesReader`.
+
 ### Changed
 
 - `fx.Decorate` scoping is now documented as the fifth fx wiring rule in `ARCHITECTURE.md`. A

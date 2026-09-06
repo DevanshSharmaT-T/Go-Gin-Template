@@ -29,6 +29,11 @@ func newEngine(cfg *config.Config) *gin.Engine {
 
 	var engine *gin.Engine = gin.New()
 
+	// Off by default, which makes gin answer 404 for a known path used with the
+	// wrong verb — and makes any NoMethod handler dead code. 405 is the honest
+	// answer and tells a client the path is right and the method is not.
+	engine.HandleMethodNotAllowed = true
+
 	// Gin trusts every proxy by default, which means any client can set
 	// X-Forwarded-For and choose the IP that rate limiting and audit logging
 	// will believe. An empty list trusts nothing; TRUSTED_PROXIES opts in.

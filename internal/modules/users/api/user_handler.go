@@ -164,7 +164,11 @@ func pageFromQuery(c *gin.Context) domain.Page {
 // rationale; this is the same function, and the duplication is deliberate —
 // each module's api package owns its rendering.
 func handleError(c *gin.Context, err error) {
-	var appErr *errors.AppError = errors.From(err)
+	// The request ID is attached here so every error response carries it,
+	// whichever layer produced the error — it is what ties a support report to
+	// a line in the log.
+	var appErr *errors.AppError = errors.From(err).
+		WithRequestID(middleware.RequestIDFrom(c))
 	c.JSON(appErr.ToHTTPStatus(), appErr.Response())
 }
 
@@ -172,8 +176,9 @@ func handleError(c *gin.Context, err error) {
 func bindJSON(c *gin.Context, target any) bool {
 	var err error = c.ShouldBindJSON(target)
 	if err != nil {
-		handleError(c, errors.NewBadRequestError("the request body is not valid", err).
-			WithDetail("body", err.Error()))
+		// Classified rather than assumed: a body that tripped the size cap is
+		// a 413, not a 400.
+		handleError(c, middleware.BindError(err))
 		return false
 	}
 	return true

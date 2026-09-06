@@ -6,12 +6,14 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/fx"
 
 	authapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/auth/api"
 	messageapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/messages/api"
 	roleapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles/api"
 	roledomain "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles/domain"
 	userapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/users/api"
+	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/errors"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/middleware"
 )
 
@@ -38,26 +40,58 @@ import (
 // compile error instead.
 func registerRoutes(
 	engine *gin.Engine,
+	global globalMiddleware,
 	jwtMiddleware gin.HandlerFunc,
 	authHandler *authapi.AuthHandler,
 	userHandler *userapi.UserHandler,
 	roleHandler *roleapi.RoleHandler,
 	notificationHandler *messageapi.NotificationHandler,
 ) {
+	// The global chain, in the order documented in docs/ARCHITECTURE.md. The
+	// order is load-bearing and is stated once, here:
+	//
+	//	recovery      outermost, so it covers the other middleware too
+	//	request ID    everything after it can log a correlation ID
+	//	logger        needs the request ID, and puts a scoped logger on the ctx
+	//	CORS          answers preflights before anything else does work
+	//	body limit    caps the read before a decoder is handed the body
+	//	rate limit    after the cheap rejections, before the expensive work
+	//	timeout       innermost, so its deadline covers only the handler
+	engine.Use(
+		gin.HandlerFunc(global.Recovery),
+		gin.HandlerFunc(global.RequestID),
+		gin.HandlerFunc(global.Logging),
+		gin.HandlerFunc(global.CORS),
+		gin.HandlerFunc(global.BodyLimit),
+		gin.HandlerFunc(global.RateLimit),
+		gin.HandlerFunc(global.Timeout),
+	)
+
+	// A request for a route that does not exist still gets a classified
+	// response rather than Gin's plain-text default.
+	engine.NoRoute(func(c *gin.Context) {
+		notFound(c)
+	})
+	engine.NoMethod(func(c *gin.Context) {
+		methodNotAllowed(c)
+	})
+
 	// --- Public ------------------------------------------------------------
 	//
 	// Everything reachable without a token. Each of these is a place an
 	// unauthenticated caller can spend our resources, which is why the auth
-	// routes get their own, tighter rate-limit bucket when that lands.
+	// routes carry a second, tighter rate-limit bucket on top of the global
+	// one: the global limit is sized for a person using the application, and
+	// credential stuffing is not that.
 
 	engine.GET("/healthz", func(c *gin.Context) {
 		// A liveness probe with no dependencies: it answers if the process is
-		// running. Readiness, which checks the database, arrives with the
-		// health module.
+		// running at all. The readiness probe, which checks the database, comes
+		// with the health module.
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	var auth *gin.RouterGroup = engine.Group("/api/auth")
+	var auth *gin.RouterGroup = engine.Group("/api/auth", gin.HandlerFunc(global.AuthRateLimit))
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
@@ -141,4 +175,37 @@ func registerRoutes(
 			middleware.Authorize(roledomain.PermMailList, roledomain.LevelAdmin),
 			notificationHandler.ListOutboundMail)
 	}
+}
+
+// globalMiddleware collects the chain so registerRoutes takes one parameter
+// rather than eight.
+//
+// It is an fx.In struct, so adding a middleware is a field here and a provider
+// in the middleware module — not another argument threaded through.
+type globalMiddleware struct {
+	fx.In
+
+	Recovery      middleware.RecoveryMiddleware
+	RequestID     middleware.RequestIDMiddleware
+	Logging       middleware.LoggingMiddleware
+	CORS          middleware.CORSMiddleware
+	BodyLimit     middleware.BodyLimitMiddleware
+	RateLimit     middleware.RateLimitMiddleware
+	AuthRateLimit middleware.AuthRateLimitMiddleware
+	Timeout       middleware.TimeoutMiddleware
+}
+
+// notFound renders an unmatched route as a classified error.
+func notFound(c *gin.Context) {
+	var appErr *errors.AppError = errors.NewNotFoundError("no such endpoint", nil).
+		WithRequestID(middleware.RequestIDFrom(c))
+	c.JSON(appErr.ToHTTPStatus(), appErr.Response())
+}
+
+// methodNotAllowed renders a known path used with the wrong verb.
+func methodNotAllowed(c *gin.Context) {
+	var appErr *errors.AppError = errors.NewMethodNotAllowedError(
+		"that method is not allowed on this endpoint", nil).
+		WithRequestID(middleware.RequestIDFrom(c))
+	c.JSON(appErr.ToHTTPStatus(), appErr.Response())
 }

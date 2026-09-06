@@ -201,6 +201,7 @@ func bearerToken(header string) (string, error) {
 // Like every handler, it asks the error for its status rather than choosing
 // one — the middleware is not a special case.
 func abort(c *gin.Context, err error) {
-	var appErr *errors.AppError = errors.From(err)
+	var appErr *errors.AppError = errors.From(err).
+		WithRequestID(RequestIDFrom(c))
 	c.AbortWithStatusJSON(appErr.ToHTTPStatus(), appErr.Response())
 }
