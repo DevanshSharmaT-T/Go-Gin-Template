@@ -46,10 +46,11 @@ the reasoning is on the page rather than in someone's head.
 > with the entry point (phase 4); and RBAC — roles, permissions, `Authorize`, and both instant
 > revocation gates (phase 5).
 >
-> **Still to come:** the SMTP mail driver (`MAIL_DRIVER=smtp` currently falls back to the log
-> driver), then CORS, request IDs, rate limiting and request timeouts, then the health probes,
-> Docker and Swagger. **The transport hardening in that list is the reason not to expose this
-> publicly yet** — the authorization model itself is complete.
+> Mail is delivered over SMTP with embedded HTML and text templates (phase 6a).
+>
+> **Still to come:** the notifications module, then CORS, request IDs, rate limiting and request
+> timeouts, then the health probes, Docker and Swagger. **The transport hardening in that list is
+> the reason not to expose this publicly yet** — the authorization model itself is complete.
 > See [`CHANGELOG.md`](CHANGELOG.md) for exactly what exists and what is next.
 
 ---

@@ -177,6 +177,37 @@ before that phase.
   is now documented as a test double that the application does not provide. Neither is wired, so a
   graph that still referenced one fails to build rather than silently downgrading to it.
 
+**Phase 6a — the SMTP driver and embedded templates**
+
+- `internal/shared/mail` — the SMTP driver, on the standard library's `net/smtp`. It honours
+  `SMTP_TLS` (`none`, `starttls`, `tls`), applies `SMTP_TIMEOUT` as a deadline on the socket rather
+  than only on the dial, and takes the context so a cancelled request does not leave a send running.
+- **A failed STARTTLS upgrade is a failed send.** With `SMTP_TLS=starttls`, a server that does not
+  advertise STARTTLS — or advertises it and then refuses — is an error, not a fallback to plaintext.
+  The fallback is a downgrade anyone on the path can force by stripping one line from the greeting,
+  and it would hand over the SMTP credentials and every reset link in the message.
+- HTML and plain-text templates for the verification and reset emails, embedded with `//go:embed`,
+  parsed once at startup so a broken template is a boot failure rather than an error nobody sees
+  until somebody is locked out. Each template gets its own parsed set: they all define a block named
+  `content`, so sharing one set would leave the last parsed template having silently replaced the
+  others.
+- A `Composer` that turns an application event into a rendered message, so the wording of an email
+  is no longer inline in the auth service.
+- Messages are encoded as `multipart/alternative`, text part first, both base64-wrapped to the MIME
+  line width — which is what stops a long single-use link from producing an over-length line.
+
+### Security
+
+- **Email header injection is refused.** Every value that becomes a header — recipient, subject,
+  either display name — is rejected if it contains CR, LF or NUL. A header ends at a line break, so
+  a subject of `Hello\r\nBcc: attacker@example.com` would otherwise add a recipient the application
+  never intended. Recipients must also parse as a bare address, since `mail.ParseAddress` would
+  otherwise accept `Name <a@b>` through a field the rest of the code treats as an address.
+- Action links must be `http` or `https`. `html/template` would neutralise a `javascript:` URL in an
+  href, but the same string also goes into the plain-text part, where nothing escapes it.
+- The link is passed to `html/template` as a plain string rather than as `template.URL`, so it goes
+  through the URL filtering and escaping instead of around it.
+
 ### Changed
 
 - `.env.example` — `GO_ENV` now documents `test` as a fourth valid tier and notes that it is

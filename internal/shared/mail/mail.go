@@ -21,9 +21,12 @@ import (
 //
 // Both bodies are optional individually but at least one must be set. A
 // text-only message is deliverable everywhere; an HTML-only one renders as
-// nothing in a plain-text client, which is why Send checks.
+// nothing in a plain-text client, which is why Validate checks.
 type Message struct {
-	To      string
+	From   Address
+	To     string
+	ToName string
+
 	Subject string
 	Text    string
 	HTML    string
@@ -31,18 +34,32 @@ type Message struct {
 
 // Validate checks the message is sendable before a driver tries.
 //
-// The address check is deliberately shallow — a non-empty value with an "@".
-// Full RFC 5322 validation belongs where the address is accepted from a user,
-// not here, and a mailer that re-litigates it just fails differently.
+// **Every value that becomes a header is checked for CR, LF and NUL**, and that
+// is not defensive tidiness — it is the one thing standing between a
+// user-supplied display name and email header injection. See headerUnsafe.
+//
+// The address itself is parsed rather than pattern-matched, and must parse to
+// exactly what was passed: `mail.ParseAddress` accepts `Name <a@b>`, and
+// accepting that here would let a display name arrive through a field the rest
+// of the code treats as a bare address.
 func (m Message) Validate() error {
 	if strings.TrimSpace(m.To) == "" {
 		return errors.NewValidationError("email message has no recipient", nil)
 	}
-	if !strings.Contains(m.To, "@") {
-		return errors.NewValidationError("email recipient is not an address", nil)
+	if !validAddress(m.To) {
+		return errors.NewValidationError("email recipient is not a valid address", nil)
+	}
+	if m.From.Email != "" && !validAddress(m.From.Email) {
+		return errors.NewValidationError("email sender is not a valid address", nil)
+	}
+	if headerUnsafe(m.From.Name) || headerUnsafe(m.ToName) {
+		return errors.NewValidationError("email display name contains a line break", nil)
 	}
 	if strings.TrimSpace(m.Subject) == "" {
 		return errors.NewValidationError("email message has no subject", nil)
+	}
+	if headerUnsafe(m.Subject) {
+		return errors.NewValidationError("email subject contains a line break", nil)
 	}
 	if strings.TrimSpace(m.Text) == "" && strings.TrimSpace(m.HTML) == "" {
 		return errors.NewValidationError("email message has no body", nil)

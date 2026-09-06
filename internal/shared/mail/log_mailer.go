@@ -32,8 +32,12 @@ func (m *LogMailer) Send(ctx context.Context, message Message) error {
 		return err
 	}
 
+	// The plain-text part only. The HTML body is the same content wrapped in a
+	// table layout, and logging both would bury the link a developer is
+	// reading this to find.
 	logger.FromContext(ctx).Info().
 		Str("driver", "log").
+		Str("from", message.From.String()).
 		Str("to", message.To).
 		Str("subject", message.Subject).
 		Str("body", message.Text).

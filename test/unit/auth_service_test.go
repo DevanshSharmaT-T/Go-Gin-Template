@@ -37,6 +37,8 @@ func testConfig() *config.Config {
 			PasswordResetTokenTTL: time.Hour,
 		},
 		Frontend: config.Frontend{URL: "http://localhost:3000"},
+		App:      config.App{Name: "unit-test"},
+		Mail:     config.Mail{FromAddress: "no-reply@example.com", FromName: "Unit Test"},
 	}
 }
 
@@ -69,12 +71,19 @@ func newAuthFixture(t *testing.T) *authFixture {
 	mailer := &recordingMailer{}
 	cryptSvc := crypt.NewService(cfg)
 
+	// The real composer, with the real embedded templates: a test that stubbed
+	// it would not notice a template that stopped rendering.
+	composer, err := mail.NewComposer(cfg)
+	if err != nil {
+		t.Fatalf("building the mail composer: %v", err)
+	}
+
 	return &authFixture{
 		service: authservice.NewAuthService(
 			cfg, users, tokens, cryptSvc,
 			middleware.NewTokenCodec(cfg),
 			&stubRoleResolver{},
-			mailer,
+			mailer, composer,
 		),
 		users:  users,
 		tokens: tokens,

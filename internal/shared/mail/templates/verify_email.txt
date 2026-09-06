@@ -1,0 +1,15 @@
+{{define "content"}}Hello {{.Name}},
+
+Thanks for signing up to {{.AppName}}. Confirm this email address to activate
+your account:
+
+  {{.ActionURL}}
+
+The link can be used once and expires in {{.ExpiresIn}}.
+
+If you did not create this account, you can ignore this message and nothing
+further will happen.
+
+--
+This is an automated message from {{.AppName}}; replies are not monitored.
+{{end}}

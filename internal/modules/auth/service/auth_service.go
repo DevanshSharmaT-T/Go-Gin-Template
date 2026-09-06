@@ -36,13 +36,14 @@ const genericResetAcknowledgement = "if that account exists, a password reset li
 // because the entity it operates on belongs to that module — auth changes the
 // *rules* about accounts, not their shape.
 type AuthService struct {
-	cfg    *config.Config
-	users  userdomain.UserRepository
-	tokens userdomain.VerificationTokenRepository
-	crypt  *crypt.Service
-	codec  *middleware.TokenCodec
-	roles  authdomain.RoleResolver
-	mailer mail.Mailer
+	cfg      *config.Config
+	users    userdomain.UserRepository
+	tokens   userdomain.VerificationTokenRepository
+	crypt    *crypt.Service
+	codec    *middleware.TokenCodec
+	roles    authdomain.RoleResolver
+	mailer   mail.Mailer
+	composer *mail.Composer
 }
 
 // NewAuthService builds the service.
@@ -54,15 +55,17 @@ func NewAuthService(
 	codec *middleware.TokenCodec,
 	roles authdomain.RoleResolver,
 	mailer mail.Mailer,
+	composer *mail.Composer,
 ) *AuthService {
 	return &AuthService{
-		cfg:    cfg,
-		users:  users,
-		tokens: tokens,
-		crypt:  cryptSvc,
-		codec:  codec,
-		roles:  roles,
-		mailer: mailer,
+		cfg:      cfg,
+		users:    users,
+		tokens:   tokens,
+		crypt:    cryptSvc,
+		codec:    codec,
+		roles:    roles,
+		mailer:   mailer,
+		composer: composer,
 	}
 }
 
@@ -350,12 +353,20 @@ func (s *AuthService) RequestPasswordReset(
 		return nil, err
 	}
 
-	err = s.sendMail(ctx, user, "Reset your password",
-		"Use the link below to choose a new password. It can be used once, and expires in "+
-			s.cfg.Auth.PasswordResetTokenTTL.String()+".\n\n"+
-			s.frontendLink("reset-password", token)+
-			"\n\nIf you did not ask for this, you can ignore this message; your password is unchanged.")
+	var message mail.Message
+	message, err = s.composer.ResetPassword(
+		user.Email, user.FullName(),
+		s.frontendLink("reset-password", token),
+		s.cfg.Auth.PasswordResetTokenTTL)
 	if err != nil {
+		return nil, err
+	}
+
+	err = s.mailer.Send(ctx, message)
+	if err != nil {
+		// The token is recorded either way, so the person can ask again. A
+		// failed send must not turn into a different response, or the failure
+		// itself becomes the enumeration signal this endpoint exists to avoid.
 		log.Error().Err(err).Str("user_id", user.ID.String()).
 			Msg("could not send the password reset email")
 	}
@@ -485,6 +496,9 @@ func (s *AuthService) issueLinkToken(
 }
 
 // sendVerificationLink issues and mails an email-verification token.
+//
+// The wording and the layout are the mail package's business; this decides only
+// that a link should be sent, to whom, and how long it lasts.
 func (s *AuthService) sendVerificationLink(ctx context.Context, user *userdomain.User) error {
 	var token string
 	var err error
@@ -493,19 +507,16 @@ func (s *AuthService) sendVerificationLink(ctx context.Context, user *userdomain
 		return err
 	}
 
-	return s.sendMail(ctx, user, "Verify your email address",
-		"Welcome. Confirm this address to activate your account. The link can be used once, "+
-			"and expires in "+s.cfg.Auth.VerificationTokenTTL.String()+".\n\n"+
-			s.frontendLink("verify-email", token))
-}
+	var message mail.Message
+	message, err = s.composer.VerifyEmail(
+		user.Email, user.FullName(),
+		s.frontendLink("verify-email", token),
+		s.cfg.Auth.VerificationTokenTTL)
+	if err != nil {
+		return err
+	}
 
-// sendMail addresses a message to a user.
-func (s *AuthService) sendMail(ctx context.Context, user *userdomain.User, subject string, body string) error {
-	return s.mailer.Send(ctx, mail.Message{
-		To:      user.Email,
-		Subject: subject,
-		Text:    "Hello " + user.FullName() + ",\n\n" + body + "\n",
-	})
+	return s.mailer.Send(ctx, message)
 }
 
 // frontendLink builds the URL a recipient clicks.
