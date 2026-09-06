@@ -40,13 +40,17 @@ dependency is present and what the alternative would have cost;
 conventions. You are meant to disagree with some of it and change those parts — that is easier when
 the reasoning is on the page rather than in someone's head.
 
-> **Status.** The template is being built in phases, and is **not runnable yet**. In place today:
-> the directory skeleton, the tooling and documentation (phase 1); the Go module with the
-> configuration loader, the structured logger and the `AppError` kernel (phase 2); and the database
-> layer — the GORM connector, the migration and seeder runners, the fx value groups and the test
-> harness (phase 3). The feature modules and the entry point land in the phases that follow, so
-> `make run` has nothing to run until then. See [`CHANGELOG.md`](CHANGELOG.md) for exactly what
-> exists and what is next.
+> **Status.** The template is being built in phases, and **runs but is not yet deployable**. In
+> place today: the skeleton, tooling and documentation (phase 1); configuration, structured logging
+> and the `AppError` kernel (phase 2); the database layer, migration and seeder runners and the test
+> harness (phase 3); and the users and auth modules with the entry point — `make run` now serves
+> registration, login, email verification and password reset (phase 4).
+>
+> **What is missing matters:** roles and permissions land in the next phase, so the administrative
+> user routes are authenticated but *not yet permission-gated*, and the in-memory revocation gates
+> (`TOKEN_STALE`, `USER_SUSPENDED`) accept every valid token. CORS, rate limiting, request timeouts
+> and the health probes follow. Do not expose this to the internet before those phases.
+> See [`CHANGELOG.md`](CHANGELOG.md) for exactly what exists and what is next.
 
 ---
 
@@ -212,8 +216,9 @@ go test ./internal/shared/crypt/... -run TestVerificationToken_RoundTrip -v
 ## Project layout
 
 ```
-cmd/api/                  entry point: fx graph composition and route registration
+cmd/api/                  entry point: the Gin engine, route registration, the HTTP server
 internal/
+  app/                    the one list of modules, composed by cmd/api and the test harness
   config/                 tiered env loading, parsing and startup validation
   shared/                 the shared kernel — used by every module
     errors/                 AppError and the single type -> HTTP status mapping

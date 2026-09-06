@@ -103,6 +103,41 @@ lists what is still to come.
 There is still no `cmd/api/main.go`, so `make build` and `make run` do not work yet. The database
 layer is library code that phase 4 wires up.
 
+**Phase 4 — users, authentication and the entry point**
+
+- `cmd/api` — the entry point. `make build` and `make run` work for the first time: the Gin engine
+  (with Gin's own stdout logger and recovery left off, since the structured equivalents arrive with
+  the middleware phase), the three-tier route groups, and an `http.Server` with every timeout set
+  and a graceful drain on shutdown. The listener is opened *inside* the start hook, so "port already
+  in use" fails the boot instead of being logged from a goroutine after fx reports success.
+- `internal/app` — the single list of modules. `cmd/api` composes it and so does `harness.App`, so
+  the harness demonstrably boots the same graph that is deployed rather than a subset of it.
+- `internal/shared/crypt` — bcrypt hashing at the configured cost (not `bcrypt.DefaultCost`),
+  constant-time comparison, `NeedsRehash` so raising `BCRYPT_COST` re-hashes users on their next
+  login with no migration, `DummyCompare` for the unknown-user path, `crypto/rand` helpers, and the
+  HMAC token codec. The token key is derived from `JWT_SECRET` with HKDF under a distinct info
+  label when `TOKEN_SECRET` is unset, so the two key usages never share material.
+- `internal/shared/middleware` — the `Claims` type, the four documented context keys, the HS256
+  token codec and `JWTMiddleware`. Verification pins the algorithm, requires the issuer and requires
+  an expiry claim, all explicitly.
+- `internal/shared/mail` — the `Mailer` port and the log driver, so the verification and reset flows
+  work end to end on a clone with no SMTP server. The SMTP driver arrives with the mail phase;
+  asking for `MAIL_DRIVER=smtp` today logs a warning rather than silently not delivering.
+- `internal/modules/users` — the `User` and `VerificationToken` entities, both repository ports and
+  their GORM adapters, the validation rules, the account service and its handler
+  (`/api/users/me`, list, get, status).
+- `internal/modules/auth` — registration, login, email verification, and password reset, with the
+  `RoleResolver` port the RBAC phase fills in.
+- 90 package-local and unit tests, and 7 further integration tests covering the register → verify →
+  login flow, single-use token redemption, reset-link supersession and purpose confinement against
+  a real database.
+
+**Not yet, and it matters:** roles and permissions are the next phase, so `middleware.Authorize`
+does not exist and the administrative user routes are authenticated but ungated; the `TokenGuard`
+and `RoleResolver` seams ship with placeholders that accept every valid token and grant no
+permissions. Tokens therefore stay valid for their full TTL after a suspension. Do not deploy
+before that phase.
+
 ### Changed
 
 - `.env.example` — `GO_ENV` now documents `test` as a fourth valid tier and notes that it is
@@ -141,6 +176,21 @@ layer is library code that phase 4 wires up.
 - Bound query parameters are never rendered into a log line. The GORM bridge implements
   `gorm.ParamsFilter` and drops them unconditionally, so a logged statement carries `$1` and not the
   email address, token or password substituted into it.
+- **Registration cannot assign a role.** `RegisterRequestDTO` has no `role_id` field at all, so a
+  request carrying one is ignored by the decoder rather than filtered later; the role comes from a
+  server-side constant. Covered by a unit test asserting what reaches the repository.
+- **Login rejects non-active accounts before checking the password**, and every failure — unknown
+  identifier, wrong password, inactive, suspended — returns byte-identical output. An unknown
+  identifier still runs a bcrypt comparison against a fixed hash, so "no such user" is not
+  measurably faster than "wrong password".
+- **Password-reset and verification links carry an opaque, single-use, short-lived token**, never a
+  password hash. Single use is enforced by a conditional `UPDATE ... WHERE consumed_at IS NULL`, so
+  two requests racing on the same link cannot both win, and only a SHA-256 fingerprint of the token
+  is stored — a leaked table yields no working links. Issuing a new link retires the previous one.
+- **Verification tokens are JSON-serialised and the HMAC covers those exact bytes**, verified
+  *before* the payload is unmarshalled. The purpose is signed in and checked, so a verification
+  token cannot be redeemed as a password reset.
+- **The forgot-password endpoint answers identically** whether or not the account exists.
 - Driver detail stays server-side. `TranslateError` keeps the `*pgconn.PgError` — with its
   constraint name, table name and offending value — as the `AppError`'s cause, which is logged and
   never serialised; the caller gets the classification and a generic message.
@@ -149,7 +199,6 @@ layer is library code that phase 4 wires up.
 
 | Phase | Contents |
 |---|---|
-| 4 | Users and auth — the user module, JWT, bcrypt, the HMAC token codec |
 | 5 | RBAC — roles, permissions, the `Authorize` middleware |
 | 6 | Email and messages — SMTP mailer with embedded templates, the notifications module |
 | 7 | Middleware and health — CORS allow-list, request ID, rate limiting, timeouts, probes |

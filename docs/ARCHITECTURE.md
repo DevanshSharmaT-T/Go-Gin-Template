@@ -112,6 +112,11 @@ column you add is immediately public, and every field you must not expose depend
 
 ## The shared kernel
 
+`internal/app` holds one thing: the list of modules that make up the application. Both the entry
+point and the test harness compose *that* list, which is what makes "the harness boots the real
+graph" a fact rather than an intention — a module added to one and forgotten in the other would
+otherwise give you a suite that passes against an application nobody deploys.
+
 `internal/shared` holds what every module needs, so no module reinvents it:
 
 | Package | Responsibility |
@@ -549,6 +554,11 @@ explicitness helps more on a codebase many people (and increasingly, coding assi
 an IDE than the brevity does. **If your team disagrees, drop the rule** — nothing in the code
 depends on it. It is a style choice, and it is documented here so that it is a *choice* rather than
 an inconsistency.
+
+**The one exception the language forces.** A type switch has no `var` form — `switch e := x.(type)`
+is the only way to bind the value, and writing `switch x.(type)` with a separate assertion in each
+case is both longer and an unchecked assertion. There is exactly one in the codebase, in
+`cmd/api/fxlog.go`.
 
 **The exception: test files use idiomatic `:=`.** `test/` and every `_test.go` file are ordinary Go.
 Table-driven tests are dominated by short-lived locals whose types are obvious from the literal

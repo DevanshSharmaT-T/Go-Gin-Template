@@ -21,8 +21,8 @@ import (
 
 	"go.uber.org/fx"
 
+	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/app"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/config"
-	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/database"
 )
 
 // databaseURLEnv names the DSN the DB-backed suites connect to. It is separate
@@ -86,8 +86,10 @@ func App(t *testing.T, targets []any, opts ...fx.Option) *fx.App {
 		// not resolve. Pass fx.WithLogger(...) in opts to see the whole graph.
 		fx.NopLogger,
 
-		config.Module,
-		database.Module,
+		// The same list cmd/api composes. Not a subset of it: a test that
+		// boots a graph the entry point does not is testing something nobody
+		// runs.
+		app.Modules,
 	}
 	options = append(options, opts...)
 	if len(targets) > 0 {

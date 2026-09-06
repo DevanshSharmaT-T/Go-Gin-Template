@@ -100,9 +100,9 @@ should break every stale mock immediately rather than let tests keep exercising 
 
 ### 2. `harness.App` — for integration tests
 
-`harness.App` boots the **real** dependency-injection graph — the same modules the entry point
-composes — against the test database, and populates whatever you ask for. Migrations, seeders and
-the registry warm-up all run, exactly as in production:
+`harness.App` boots the **real** dependency-injection graph — literally `internal/app.Modules`, the
+same value the entry point composes — against the test database, and populates whatever you ask for.
+Migrations, seeders and the registry warm-up all run, exactly as in production:
 
 ```go
 var repo domain.UserRepository
