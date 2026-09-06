@@ -180,6 +180,25 @@ type RateLimitMiddleware gin.HandlerFunc
 type RequestIDMiddleware gin.HandlerFunc
 ```
 
+### 5. `fx.Decorate` is scoped to the module that declares it
+
+A decoration wraps an existing type — the messages module wraps `mail.Mailer` so every send is
+recorded. Declared inside an `fx.Module`, it applies to **that module and its descendants only**:
+
+```go
+// Wrong — inside messages.Module. The auth module, which is the only thing that
+// actually sends mail, keeps the undecorated mailer. Nothing is recorded and
+// nothing reports an error; the table just stays empty.
+var Module = fx.Module("messages", fx.Decorate(service.NewRecordingMailer))
+
+// Right — exported separately and included at the root, where internal/app is
+// an fx.Options rather than an fx.Module.
+var RecordMail = fx.Decorate(service.NewRecordingMailer)
+```
+
+This one has no startup error at all, which makes it the worst of the five. The only thing that
+catches it is a test asserting the decoration took effect.
+
 > **How to debug any of these.** fx prints the full graph on startup failure and names the missing
 > or duplicated type. Run with `fx.WithLogger` at debug level and read the constructor list — the
 > first `[Error]` line names the exact type it could not resolve.

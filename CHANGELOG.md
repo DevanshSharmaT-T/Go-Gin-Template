@@ -208,8 +208,32 @@ before that phase.
 - The link is passed to `html/template` as a plain string rather than as `template.URL`, so it goes
   through the URL filtering and escaping instead of around it.
 
+**Phase 6b — notifications and outbound mail records**
+
+- `internal/modules/messages` — in-app notifications and a record of every email the application has
+  tried to send: both entities, both repository ports and adapters, the service and the handler.
+- **Notifications are scoped by query, not by check.** Every read and write of a single notification
+  carries the account id in its `WHERE` clause, so reaching somebody else's is not an ownership test
+  a handler could forget — the statement simply matches nothing. A notification belonging to someone
+  else and one that does not exist return the same `NOT_FOUND`, since telling them apart would
+  confirm that a guessed id is real.
+- `RecordingMailer` decorates `mail.Mailer`, so each send is logged with its recipient, subject and
+  outcome. **The delivery record deliberately holds no message body**: every email this application
+  sends carries a single-use link, so a table of bodies would be a table of working credentials, and
+  the admin endpoint that lists them would hand them out.
+- Two new permissions through the catalogue — `notifications:send` and `mail:list` — both at
+  administrator level. The self-scoped notification routes need no permission beyond being signed in.
+- `domain.Notifier` is the port another module depends on to raise a notification without depending
+  on this module's service.
+- 6 further integration tests, including one whose only job is to prove the mail decoration is
+  actually applied to the module that sends mail.
+
 ### Changed
 
+- `fx.Decorate` scoping is now documented as the fifth fx wiring rule in `ARCHITECTURE.md`. A
+  decoration declared inside an `fx.Module` reaches that module and its descendants only, so
+  `messages.RecordMail` is exported separately and included at the root. It is the one wiring
+  mistake in the list that produces no startup error — only an empty table.
 - `.env.example` — `GO_ENV` now documents `test` as a fourth valid tier and notes that it is
   validated at startup.
 
@@ -277,6 +301,5 @@ before that phase.
 
 | Phase | Contents |
 |---|---|
-| 6 | Email and messages — SMTP mailer with embedded templates, the notifications module |
 | 7 | Middleware and health — CORS allow-list, request ID, rate limiting, timeouts, probes |
 | 8 | Tests and tooling — harness, fixtures, mocks, the three suites, Docker, Swagger |

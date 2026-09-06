@@ -106,6 +106,9 @@ mocks: ## Regenerate repository mocks into internal/mocks
 	go run go.uber.org/mock/mockgen@v0.6.0 \
 		-source=internal/modules/roles/domain/role_repository.go \
 		-destination=internal/mocks/roles/mock_role_repository.go -package=roles
+	go run go.uber.org/mock/mockgen@v0.6.0 \
+		-source=internal/modules/messages/domain/message_repository.go \
+		-destination=internal/mocks/messages/mock_message_repository.go -package=messages
 
 # --- Quality -----------------------------------------------------------------
 

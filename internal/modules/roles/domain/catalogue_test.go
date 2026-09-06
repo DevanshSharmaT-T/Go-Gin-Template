@@ -21,6 +21,7 @@ func TestCatalogue_ContainsEveryDeclaredSlug(t *testing.T) {
 	declared := []string{
 		PermUsersList, PermUsersRead, PermUsersManage,
 		PermRolesList, PermRolesRead, PermRolesManage,
+		PermNotificationsSend, PermMailList,
 	}
 
 	seeded := map[string]bool{}
@@ -43,6 +44,7 @@ func TestCatalogue_HasNoEntryWithoutAConstant(t *testing.T) {
 	declared := map[string]bool{
 		PermUsersList: true, PermUsersRead: true, PermUsersManage: true,
 		PermRolesList: true, PermRolesRead: true, PermRolesManage: true,
+		PermNotificationsSend: true, PermMailList: true,
 	}
 
 	for _, definition := range Catalogue() {

@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	authapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/auth/api"
+	messageapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/messages/api"
 	roleapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles/api"
 	roledomain "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles/domain"
 	userapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/users/api"
@@ -41,6 +42,7 @@ func registerRoutes(
 	authHandler *authapi.AuthHandler,
 	userHandler *userapi.UserHandler,
 	roleHandler *roleapi.RoleHandler,
+	notificationHandler *messageapi.NotificationHandler,
 ) {
 	// --- Public ------------------------------------------------------------
 	//
@@ -116,5 +118,27 @@ func registerRoutes(
 				middleware.Authorize(roledomain.PermRolesManage, roledomain.LevelAdmin),
 				roleHandler.UpdatePermissions)
 		}
+
+		var notifications *gin.RouterGroup = api.Group("/notifications")
+		{
+			// Self-scoped: the identity comes from the token, so the only
+			// account these can reach is the caller's own. Being signed in is
+			// the whole authorization.
+			notifications.GET("", notificationHandler.List)
+			notifications.GET("/unread-count", notificationHandler.UnreadCount)
+			notifications.POST("/read-all", notificationHandler.MarkAllRead)
+			notifications.POST("/:id/read", notificationHandler.MarkRead)
+
+			// Writing to somebody else's account is not.
+			notifications.POST("",
+				middleware.Authorize(roledomain.PermNotificationsSend, roledomain.LevelAdmin),
+				notificationHandler.Send)
+		}
+
+		// The delivery log lists every address the system has sent to, so it
+		// is administrator-only.
+		api.GET("/mail",
+			middleware.Authorize(roledomain.PermMailList, roledomain.LevelAdmin),
+			notificationHandler.ListOutboundMail)
 	}
 }

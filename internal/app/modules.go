@@ -18,6 +18,7 @@ import (
 
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/config"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/auth"
+	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/messages"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/users"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/crypt"
@@ -52,5 +53,12 @@ var Modules = fx.Options(
 	// then returns 403 with nothing to say why.
 	users.Module,
 	roles.Module,
+	messages.Module,
 	auth.Module,
+
+	// Wrap every mail.Mailer so each send is recorded. This sits here, at the
+	// root, rather than inside messages.Module: fx scopes a decoration to the
+	// module that declares it, so from in there it would not reach the auth
+	// module — the only thing that sends mail — and nothing would be recorded.
+	messages.RecordMail,
 )

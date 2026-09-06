@@ -48,6 +48,9 @@ const (
 	PermRolesList   = "roles:list"
 	PermRolesRead   = "roles:read"
 	PermRolesManage = "roles:manage"
+
+	PermNotificationsSend = "notifications:send"
+	PermMailList          = "mail:list"
 )
 
 // PermissionDefinition is one entry in the catalogue: the slug, and a
@@ -72,6 +75,9 @@ func Catalogue() []PermissionDefinition {
 		{PermRolesList, "List roles"},
 		{PermRolesRead, "View a role and its permissions"},
 		{PermRolesManage, "Change which permissions a role grants"},
+
+		{PermNotificationsSend, "Send an in-app notification to any account"},
+		{PermMailList, "List every email the application has tried to send"},
 	}
 }
 
@@ -110,6 +116,7 @@ func Roles() []RoleDefinition {
 			Grants: []string{
 				PermUsersList, PermUsersRead, PermUsersManage,
 				PermRolesList, PermRolesRead, PermRolesManage,
+				PermNotificationsSend, PermMailList,
 			},
 		},
 		{
