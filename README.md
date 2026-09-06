@@ -40,16 +40,16 @@ dependency is present and what the alternative would have cost;
 conventions. You are meant to disagree with some of it and change those parts — that is easier when
 the reasoning is on the page rather than in someone's head.
 
-> **Status.** The template is being built in phases, and **runs but is not yet deployable**. In
-> place today: the skeleton, tooling and documentation (phase 1); configuration, structured logging
-> and the `AppError` kernel (phase 2); the database layer, migration and seeder runners and the test
-> harness (phase 3); and the users and auth modules with the entry point — `make run` now serves
-> registration, login, email verification and password reset (phase 4).
+> **Status.** The template is being built in phases. In place today: the skeleton, tooling and
+> documentation (phase 1); configuration, structured logging and the `AppError` kernel (phase 2);
+> the database layer, migration and seeder runners and the test harness (phase 3); users and auth
+> with the entry point (phase 4); and RBAC — roles, permissions, `Authorize`, and both instant
+> revocation gates (phase 5).
 >
-> **What is missing matters:** roles and permissions land in the next phase, so the administrative
-> user routes are authenticated but *not yet permission-gated*, and the in-memory revocation gates
-> (`TOKEN_STALE`, `USER_SUSPENDED`) accept every valid token. CORS, rate limiting, request timeouts
-> and the health probes follow. Do not expose this to the internet before those phases.
+> **Still to come:** the SMTP mail driver (`MAIL_DRIVER=smtp` currently falls back to the log
+> driver), then CORS, request IDs, rate limiting and request timeouts, then the health probes,
+> Docker and Swagger. **The transport hardening in that list is the reason not to expose this
+> publicly yet** — the authorization model itself is complete.
 > See [`CHANGELOG.md`](CHANGELOG.md) for exactly what exists and what is next.
 
 ---

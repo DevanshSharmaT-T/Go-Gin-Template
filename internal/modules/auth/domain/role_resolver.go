@@ -24,35 +24,10 @@ type RoleResolver interface {
 	Resolve(ctx context.Context, roleID int64) (*RoleClaims, error)
 }
 
-// UnprivilegedHierarchyLevel is the seniority the fallback resolver reports.
+// UnprivilegedHierarchyLevel is the least senior level in the documented
+// hierarchy, matching the seeded USER role.
 //
-// It matches the seeded USER role. 100 is the least senior level in the
-// documented hierarchy, and the comparison is "lower is more senior", so a
-// token minted with it passes no level gate that matters.
+// It is declared here, in the port's own package, so a test can build claims
+// for an ordinary account without importing the roles module. The roles
+// catalogue's LevelUser must agree with it, and a test asserts that it does.
 const UnprivilegedHierarchyLevel int64 = 100
-
-// FallbackRoleResolver grants nothing.
-//
-// **This is a placeholder, and it fails closed on purpose.** Until the roles
-// module exists there is no permission table to read, so it reports the least
-// senior level and an empty permission set — every token it contributes to is
-// authenticated but unprivileged. The alternative, inventing permissions so
-// that routes appear to work, would mean the RBAC phase *removes* access that
-// people had come to rely on, which is the worse way round to discover a
-// mistake.
-type FallbackRoleResolver struct{}
-
-// NewFallbackRoleResolver builds the placeholder resolver.
-func NewFallbackRoleResolver() RoleResolver {
-	return &FallbackRoleResolver{}
-}
-
-// Resolve reports the role as unprivileged.
-func (r *FallbackRoleResolver) Resolve(_ context.Context, roleID int64) (*RoleClaims, error) {
-	return &RoleClaims{
-		RoleID:         roleID,
-		HierarchyLevel: UnprivilegedHierarchyLevel,
-		Permissions:    map[string]bool{},
-		PermVersion:    0,
-	}, nil
-}

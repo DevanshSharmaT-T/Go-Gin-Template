@@ -127,11 +127,15 @@ type TokenGuard interface {
 
 // AllowAllGuard accepts every otherwise-valid token.
 //
-// It is the default until the permission registry exists. **It is not a
-// no-op you can leave in place**: with this guard a token stays valid for its
-// full TTL after a role's permissions change or an account is suspended, which
-// is precisely the weakness stateless tokens are known for. The RBAC phase
-// replaces it, and the only reason it exists is that a graph must resolve.
+// **It is a test double, and the application does not provide it** — the RBAC
+// module supplies the real guard, backed by the permission registry. It exists
+// so a test of this middleware can exercise signature, issuer and expiry
+// handling without standing up a registry.
+//
+// If you wire it into a running application you have turned revocation off: a
+// token then stays valid for its full TTL after a role's permissions change or
+// an account is suspended, which is precisely the weakness stateless tokens are
+// known for.
 type AllowAllGuard struct{}
 
 // Check accepts everything.

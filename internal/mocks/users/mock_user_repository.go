@@ -145,3 +145,51 @@ func (mr *MockUserRepositoryMockRecorder) Update(ctx, user any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockUserRepository)(nil).Update), ctx, user)
 }
+
+// MockSuspensionRegistry is a mock of SuspensionRegistry interface.
+type MockSuspensionRegistry struct {
+	ctrl     *gomock.Controller
+	recorder *MockSuspensionRegistryMockRecorder
+	isgomock struct{}
+}
+
+// MockSuspensionRegistryMockRecorder is the mock recorder for MockSuspensionRegistry.
+type MockSuspensionRegistryMockRecorder struct {
+	mock *MockSuspensionRegistry
+}
+
+// NewMockSuspensionRegistry creates a new mock instance.
+func NewMockSuspensionRegistry(ctrl *gomock.Controller) *MockSuspensionRegistry {
+	mock := &MockSuspensionRegistry{ctrl: ctrl}
+	mock.recorder = &MockSuspensionRegistryMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSuspensionRegistry) EXPECT() *MockSuspensionRegistryMockRecorder {
+	return m.recorder
+}
+
+// Restore mocks base method.
+func (m *MockSuspensionRegistry) Restore(userID uuid.UUID) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Restore", userID)
+}
+
+// Restore indicates an expected call of Restore.
+func (mr *MockSuspensionRegistryMockRecorder) Restore(userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Restore", reflect.TypeOf((*MockSuspensionRegistry)(nil).Restore), userID)
+}
+
+// Suspend mocks base method.
+func (m *MockSuspensionRegistry) Suspend(userID uuid.UUID) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Suspend", userID)
+}
+
+// Suspend indicates an expected call of Suspend.
+func (mr *MockSuspensionRegistryMockRecorder) Suspend(userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Suspend", reflect.TypeOf((*MockSuspensionRegistry)(nil).Suspend), userID)
+}

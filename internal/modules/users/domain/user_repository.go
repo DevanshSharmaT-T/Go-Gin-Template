@@ -71,3 +71,18 @@ func (p Page) Normalize() Page {
 	}
 	return normalized
 }
+
+// SuspensionRegistry is notified when an account's status changes.
+//
+// It is a port because the thing behind it is the RBAC module's in-memory
+// registry, and this module must not depend on that module's internals — but
+// the status change happens here, and it has to reach memory immediately.
+// Writing "suspended" to a row while every outstanding token keeps working is
+// not a suspension.
+//
+// Implementations must be safe for concurrent use and must not block: this is
+// called while handling a request.
+type SuspensionRegistry interface {
+	Suspend(userID uuid.UUID)
+	Restore(userID uuid.UUID)
+}

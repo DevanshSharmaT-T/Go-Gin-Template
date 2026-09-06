@@ -350,6 +350,21 @@ Slugs are `resource:action`. **The slug on the route and the slug in the permiss
 match exactly** — a typo fails closed, silently removing access rather than granting it. That is the
 safe direction to fail, and it is also why it is easy to miss in review.
 
+So the template does not ask you to get it right twice. Both the route and the seeder name the same
+constant from `roles/domain/catalogue.go`, and the seeder inserts that catalogue:
+
+```go
+// catalogue.go — declared once
+const PermUsersList = "users:list"
+
+// routes.go — gated on the constant
+users.GET("", middleware.Authorize(roledomain.PermUsersList, roledomain.LevelManager), h.List)
+```
+
+A misspelled slug is then a compile error rather than a silent revocation, and a constant that never
+made it into the catalogue is caught by a test. Adding a permission is one catalogue entry plus its
+use on a route.
+
 `SUPER_ADMIN` (level 1) bypasses the permission map. This is a deliberate break-glass so a
 misconfigured permission table cannot lock everyone out of the system that fixes permission tables.
 It is also, unavoidably, a single role that can do anything — treat those accounts accordingly.
@@ -363,6 +378,9 @@ revoke the user's access. Two gates close that, both reading in-memory state:
   change. A token whose version does not match the current one is rejected, so a permission change
   invalidates outstanding tokens immediately.
 - **`USER_SUSPENDED`** — suspending a user adds them to an in-memory set checked on every request.
+
+Both are rebuilt at boot: the suspended set is read back from the `users` table during the warm-up,
+so restarting the process does not quietly lift every suspension.
 
 ### The scaling limit — read this before you deploy replicas
 

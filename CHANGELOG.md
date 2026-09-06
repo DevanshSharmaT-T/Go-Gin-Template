@@ -138,6 +138,45 @@ and `RoleResolver` seams ship with placeholders that accept every valid token an
 permissions. Tokens therefore stay valid for their full TTL after a suspension. Do not deploy
 before that phase.
 
+**Phase 5 — roles, permissions and authorization**
+
+- `internal/modules/roles` — the `Role`, `Permission` and `RolePermission` entities, the repository
+  port and its GORM adapter, the role service, and the handler behind `/api/roles`.
+- `roles/domain/catalogue.go` — **one declaration per permission**, named by both the route and the
+  seeder. The failure this prevents is a route gated on `case:view` while the seeder inserts
+  `cases:view`: it fails closed, silently removing access, and it survives review because neither
+  file looks wrong alone. With one constant a typo is a compile error, and a constant missing from
+  the catalogue is caught by a test.
+- `roles/domain/registry.go` — the in-memory permission registry: each role's grants, its permission
+  version, its hierarchy level, and the set of suspended accounts. It is a package-level singleton
+  that fx does not manage, rebuilt at boot, and every method is safe for concurrent use.
+- `internal/shared/middleware/authorize.go` — `Authorize(slug, level)` and `RequireLevel(level)`.
+  Both conditions must hold; level 1 bypasses the permission map as the documented break-glass; a
+  route with no authentication in front of it is refused rather than allowed.
+- Both revocation gates now work, and neither touches the database. Changing a role's permissions
+  bumps its version in the same transaction as the grant change, so every token that role has
+  outstanding is refused with `TOKEN_STALE` from the next request. Suspending an account adds it to
+  the registry in the same call that writes the row, so `USER_SUSPENDED` is immediate rather than
+  waiting out the token's TTL. Suspensions are read back at boot, so a restart does not lift them.
+- Seeders for the role hierarchy, the permission catalogue and the initial grants, all idempotent
+  with `ON CONFLICT DO NOTHING` — so a permission an administrator has revoked through the API is
+  not restored on the next restart.
+- `users/seeds/admin_seeder.go` — the optional first administrator from `ADMIN_*`. It logs a warning
+  when it skips, a louder one when the three variables are half-set, and it carries no personal data
+  of any kind.
+- The administrative routes are gated: `users:list`/`users:read` at manager level, `users:manage`
+  and `roles:manage` at administrator level.
+- 37 further package-local tests — including the hierarchy direction, the two-condition rule, the
+  break-glass, and a race-detected concurrency test on the registry — and 8 further integration
+  tests covering the warm-up, revocation on permission change, immediate suspension, and suspension
+  surviving a restart.
+
+### Removed
+
+- The two placeholders the auth phase shipped. `FallbackRoleResolver` is deleted, and `AllowAllGuard`
+  is now documented as a test double that the application does not provide. Neither is wired, so a
+  graph that still referenced one fails to build rather than silently downgrading to it.
+
 ### Changed
 
 - `.env.example` — `GO_ENV` now documents `test` as a fourth valid tier and notes that it is
@@ -176,6 +215,14 @@ before that phase.
 - Bound query parameters are never rendered into a log line. The GORM bridge implements
   `gorm.ParamsFilter` and drops them unconditionally, so a logged statement carries `$1` and not the
   email address, token or password substituted into it.
+- **A permission slug is declared once**, and named by both the route and the seeder. The classic
+  version of this bug — a route gated on a slug that was never seeded — fails closed and silently
+  removes access from everyone who should have had it.
+- **Authorization requires a permission *and* a seniority level**, and a refusal does not say which
+  one failed. Reporting "you have the permission but not the seniority" describes the shape of the
+  model and which accounts are worth attacking.
+- **`Authorize` refuses when it cannot find claims**, so a route registered without authentication
+  in front of it is closed rather than open.
 - **Registration cannot assign a role.** `RegisterRequestDTO` has no `role_id` field at all, so a
   request carrying one is ignored by the decoder rather than filtered later; the role comes from a
   server-side constant. Covered by a unit test asserting what reaches the repository.
@@ -199,7 +246,6 @@ before that phase.
 
 | Phase | Contents |
 |---|---|
-| 5 | RBAC — roles, permissions, the `Authorize` middleware |
 | 6 | Email and messages — SMTP mailer with embedded templates, the notifications module |
 | 7 | Middleware and health — CORS allow-list, request ID, rate limiting, timeouts, probes |
 | 8 | Tests and tooling — harness, fixtures, mocks, the three suites, Docker, Swagger |

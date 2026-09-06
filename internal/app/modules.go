@@ -18,6 +18,7 @@ import (
 
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/config"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/auth"
+	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/users"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/crypt"
 	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/database"
@@ -43,6 +44,13 @@ var Modules = fx.Options(
 	middleware.Module,
 
 	// Feature modules.
+	//
+	// **roles must stay after database.** fx appends lifecycle hooks in the
+	// order constructors run, which follows the order of these options, and the
+	// registry warm-up in roles has to run after the seeding in database. Move
+	// it above and the registry loads from an empty database: every gated route
+	// then returns 403 with nothing to say why.
 	users.Module,
+	roles.Module,
 	auth.Module,
 )

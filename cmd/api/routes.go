@@ -8,7 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	authapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/auth/api"
+	roleapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles/api"
+	roledomain "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/roles/domain"
 	userapi "github.com/DevanshSharmaT-T/Go-Gin-Template/internal/modules/users/api"
+	"github.com/DevanshSharmaT-T/Go-Gin-Template/internal/shared/middleware"
 )
 
 // registerRoutes is the composition root for the HTTP surface, and it is the
@@ -27,14 +30,17 @@ import (
 //	authenticated   r.Group("/api") + jwtMiddleware
 //	permission      the above + middleware.Authorize(slug, level)
 //
-// The third tier arrives with the RBAC phase. Until then the administrative
-// routes below are authenticated but not permission-gated, which is called out
-// where they are registered rather than left to be discovered.
+// **The slugs below are constants, not string literals.** A route gated on a
+// slug the seeder never inserted fails closed — it silently removes access
+// rather than granting it, and it survives review because nothing about it
+// looks wrong. Naming the same constant the catalogue seeds makes a typo a
+// compile error instead.
 func registerRoutes(
 	engine *gin.Engine,
 	jwtMiddleware gin.HandlerFunc,
 	authHandler *authapi.AuthHandler,
 	userHandler *userapi.UserHandler,
+	roleHandler *roleapi.RoleHandler,
 ) {
 	// --- Public ------------------------------------------------------------
 	//
@@ -72,17 +78,43 @@ func registerRoutes(
 			users.PATCH("/me", userHandler.UpdateMe)
 			users.POST("/me/password", userHandler.ChangePassword)
 
-			// Administrative. These read and modify *other* people's accounts
-			// and belong in the permission-gated tier:
+			// --- Permission-gated -------------------------------------
 			//
-			//	users.GET("", middleware.Authorize("users:list", RoleManager), userHandler.List)
-			//
-			// The RBAC phase adds that gate. Until it does they are reachable
-			// by any authenticated caller, which is why this template is not
-			// deployable before that phase lands.
-			users.GET("", userHandler.List)
-			users.GET("/:id", userHandler.GetByID)
-			users.PATCH("/:id/status", userHandler.UpdateStatus)
+			// These read and modify *other* people's accounts. Each needs both
+			// a permission and a seniority level: the level asks "should this
+			// caller be anywhere near this?", the slug asks "has this caller
+			// been granted this specific action?".
+			users.GET("",
+				middleware.Authorize(roledomain.PermUsersList, roledomain.LevelManager),
+				userHandler.List)
+			users.GET("/:id",
+				middleware.Authorize(roledomain.PermUsersRead, roledomain.LevelManager),
+				userHandler.GetByID)
+
+			// Suspending an account is an administrator's job, not a manager's,
+			// so it sits a level higher as well as behind its own permission.
+			users.PATCH("/:id/status",
+				middleware.Authorize(roledomain.PermUsersManage, roledomain.LevelAdmin),
+				userHandler.UpdateStatus)
+		}
+
+		var roleGroup *gin.RouterGroup = api.Group("/roles")
+		{
+			roleGroup.GET("",
+				middleware.Authorize(roledomain.PermRolesList, roledomain.LevelManager),
+				roleHandler.List)
+			roleGroup.GET("/permissions",
+				middleware.Authorize(roledomain.PermRolesRead, roledomain.LevelManager),
+				roleHandler.ListPermissions)
+			roleGroup.GET("/:id",
+				middleware.Authorize(roledomain.PermRolesRead, roledomain.LevelManager),
+				roleHandler.GetByID)
+
+			// Changing what a role grants revokes every token that role has
+			// outstanding, so it is the most consequential route here.
+			roleGroup.PUT("/:id/permissions",
+				middleware.Authorize(roledomain.PermRolesManage, roledomain.LevelAdmin),
+				roleHandler.UpdatePermissions)
 		}
 	}
 }

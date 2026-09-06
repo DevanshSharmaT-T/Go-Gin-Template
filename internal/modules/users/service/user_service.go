@@ -21,13 +21,18 @@ import (
 // is by what breaks when it changes: this service changes when the account
 // *shape* does, auth changes when the *authentication rules* do.
 type UserService struct {
-	users domain.UserRepository
-	crypt *crypt.Service
+	users       domain.UserRepository
+	crypt       *crypt.Service
+	suspensions domain.SuspensionRegistry
 }
 
 // NewUserService builds the service.
-func NewUserService(users domain.UserRepository, cryptSvc *crypt.Service) *UserService {
-	return &UserService{users: users, crypt: cryptSvc}
+func NewUserService(
+	users domain.UserRepository,
+	cryptSvc *crypt.Service,
+	suspensions domain.SuspensionRegistry,
+) *UserService {
+	return &UserService{users: users, crypt: cryptSvc, suspensions: suspensions}
 }
 
 // GetByID returns one account, or a NOT_FOUND AppError.
@@ -174,10 +179,15 @@ func (s *UserService) ChangePassword(
 // UpdateStatus is the administrative enable/disable, gated by a permission on
 // the route.
 //
-// Suspension takes effect on the next request rather than immediately: the
-// in-memory revocation gate that makes it instant arrives with the RBAC
-// module. Until then a suspended user's existing access token stays usable
-// until it expires.
+// The row is written first and the registry second, and that order matters. If
+// the registry were updated first and the write then failed, the account would
+// be blocked in memory with nothing in the database to say why — and the block
+// would vanish at the next restart. This way a failed write leaves both
+// unchanged.
+//
+// The registry update is what makes a suspension immediate. Without it the
+// account stays usable until its access token expires, which at the default TTL
+// is a day.
 func (s *UserService) UpdateStatus(
 	ctx context.Context,
 	id uuid.UUID,
@@ -201,6 +211,13 @@ func (s *UserService) UpdateStatus(
 	if err != nil {
 		return nil, err
 	}
+
+	if status == domain.UserStatusSuspended {
+		s.suspensions.Suspend(user.ID)
+	} else {
+		s.suspensions.Restore(user.ID)
+	}
+
 	return toUserResponse(user), nil
 }
 

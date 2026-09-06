@@ -15,12 +15,12 @@ import (
 //
 //	type RequestIDMiddleware gin.HandlerFunc
 //
-// AllowAllGuard is the placeholder revocation check, replaced by the permission
-// registry in the RBAC phase. See its doc comment for what it does not do.
+// TokenGuard is not provided here. The RBAC module supplies it from the
+// permission registry, because the state it reads belongs to that module and
+// the shared kernel may not import one.
 var Module = fx.Module("middleware",
 	fx.Provide(
 		NewTokenCodec,
 		JWTMiddleware,
-		func() TokenGuard { return AllowAllGuard{} },
 	),
 )
