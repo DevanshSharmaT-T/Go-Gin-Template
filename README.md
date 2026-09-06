@@ -41,10 +41,12 @@ conventions. You are meant to disagree with some of it and change those parts â€
 the reasoning is on the page rather than in someone's head.
 
 > **Status.** The template is being built in phases, and is **not runnable yet**. In place today:
-> the directory skeleton, the tooling and documentation (phase 1), and the Go module with the
-> configuration loader, the structured logger and the `AppError` kernel (phase 2). The database
-> layer, the modules and the entry point land in the phases that follow, so `make run` has nothing
-> to run until then. See [`CHANGELOG.md`](CHANGELOG.md) for exactly what exists and what is next.
+> the directory skeleton, the tooling and documentation (phase 1); the Go module with the
+> configuration loader, the structured logger and the `AppError` kernel (phase 2); and the database
+> layer â€” the GORM connector, the migration and seeder runners, the fx value groups and the test
+> harness (phase 3). The feature modules and the entry point land in the phases that follow, so
+> `make run` has nothing to run until then. See [`CHANGELOG.md`](CHANGELOG.md) for exactly what
+> exists and what is next.
 
 ---
 

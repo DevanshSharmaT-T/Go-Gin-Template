@@ -85,6 +85,10 @@ repo.EXPECT().
 svc := service.NewUserService(repo, crypt, mailer)   // real service, fake persistence
 ```
 
+`nil, nil` is the "no such row" signal for a *lookup*; a method that operates on a specific row
+returns a `NOT_FOUND` `AppError` instead. See
+[Absence is not always an error](ARCHITECTURE.md#absence-is-not-always-an-error).
+
 Regenerate after changing an interface:
 
 ```bash

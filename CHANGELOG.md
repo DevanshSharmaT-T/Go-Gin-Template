@@ -60,6 +60,49 @@ lists what is still to come.
 - `test/integration` and `test/e2e` package declarations, so the tagged CI suites resolve instead
   of failing on "no packages to test".
 
+**Phase 3 — the database layer**
+
+- `internal/shared/database` — the GORM/pgx connector, with all four `DATABASE_*` pool settings
+  actually applied to the underlying `sql.DB`, `TranslateError` enabled so constraint violations
+  arrive as GORM sentinels, and UTC timestamps rather than GORM's server-local default. Automatic
+  pinging is off: a constructor has no context, so the real check happens in the start hook, where
+  it can honour a deadline.
+- `internal/shared/database/errors.go` — `TranslateError`, the seam between the driver and the rest
+  of the application. It maps GORM sentinels and PostgreSQL SQLSTATE codes onto `AppError`
+  classifications (`23505` → `CONFLICT`, `23502`/`23514` → `VALIDATION`, `57014` → `TIMEOUT`,
+  class `08` → `UNAVAILABLE`, everything else → `INTERNAL`) using only `errors.Is`/`errors.As` —
+  no error text is matched, and an already-classified `AppError` is passed through unchanged.
+- `internal/shared/database/migrations` — the versioned migration runner. It validates that versions
+  are contiguous from 1 *before* applying anything, applies each pending version and its
+  `migration_records` row in one transaction, and checks every error rather than discarding the ones
+  from `Pluck` and the commit. The catalogue ships empty, with a commented recipe for each change
+  `AutoMigrate` cannot express.
+- `internal/shared/database/module.go` — the fx module. It consumes the `group:"models"` and
+  `group:"seeders"` value groups and hangs the boot sequence off `fx.Lifecycle`: ping, create the
+  `uuid-ossp` extension, `AutoMigrate` the models registry, apply versioned migrations, seed, and
+  close the pool on shutdown. Every step takes the start context, so `fx.StartTimeout` can cancel a
+  migration that is blocked on a lock. **An entry point must raise that timeout above fx's 15-second
+  default** if seeding a fresh database takes longer.
+- `internal/shared/database/seed.go` — `SeedFunc` and a runner that names the failing seeder in its
+  error, since a value group is unordered and its members are otherwise anonymous.
+- `internal/shared/database/logger.go` — a GORM `logger.Interface` bridged onto zerolog, honouring
+  `DATABASE_LOG_LEVEL`, warning about statements over 200ms and never treating
+  `gorm.ErrRecordNotFound` as a failure.
+- `internal/config/module.go` — `fx.Provide(Load)`, so configuration resolves through the graph.
+- `test/harness` — `harness.App` boots the real fx graph against `TEST_DATABASE_URL` and populates
+  the targets a test asks for, skipping when that variable is unset. It runs from an empty temporary
+  directory so `godotenv.Overload` cannot swap the test DSN for the developer's own.
+- 64 further package-local tests, none of which need a database: every `TranslateError` branch, the
+  contiguity guard, the GORM log-level mapping and the seeder runner.
+- A 10-test integration suite that boots the real graph with a test-local model and seeder
+  registered through the same value-group tags a feature module uses, asserting that the table is
+  created, `migration_records` is populated, a failed migration is rolled back and left unrecorded,
+  a second boot changes nothing, and a duplicate insert surfaces as a `CONFLICT` with the constraint
+  name absent from the response. No throwaway table enters the template itself.
+
+There is still no `cmd/api/main.go`, so `make build` and `make run` do not work yet. The database
+layer is library code that phase 4 wires up.
+
 ### Changed
 
 - `.env.example` — `GO_ENV` now documents `test` as a fourth valid tier and notes that it is
@@ -73,12 +116,17 @@ lists what is still to come.
   is not shorter than `SERVER_WRITE_TIMEOUT`; a non-positive body-size cap; an unparseable entry
   in `TRUSTED_PROXIES`; and a half-configured Google OAuth credential pair.
 - Secret values are never echoed into a configuration error message.
+- Bound query parameters are never rendered into a log line. The GORM bridge implements
+  `gorm.ParamsFilter` and drops them unconditionally, so a logged statement carries `$1` and not the
+  email address, token or password substituted into it.
+- Driver detail stays server-side. `TranslateError` keeps the `*pgconn.PgError` — with its
+  constraint name, table name and offending value — as the `AppError`'s cause, which is logged and
+  never serialised; the caller gets the classification and a generic message.
 
 ### Planned
 
 | Phase | Contents |
 |---|---|
-| 3 | Database — GORM connector, versioned migrations, seeders, fx value groups |
 | 4 | Users and auth — the user module, JWT, bcrypt, the HMAC token codec |
 | 5 | RBAC — roles, permissions, the `Authorize` middleware |
 | 6 | Email and messages — SMTP mailer with embedded templates, the notifications module |

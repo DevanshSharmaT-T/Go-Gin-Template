@@ -149,17 +149,25 @@ if you skip them are marked.
 
 ## Database migrations
 
-Append the next integer key to the map in `internal/shared/database/migrations/`.
+Most schema changes need no migration at all. Registering an entity in the `group:"models"` value
+group is enough for `AutoMigrate` to create the table, and to add columns and indexes as the struct
+tags change. Reach for a numbered migration for the things `AutoMigrate` will not do: dropping a
+column, renaming one, changing a type, backfilling a value, adding a constraint.
 
-⚠️ **Keys must be contiguous starting at 1.** The runner iterates to `len(migrationMap)`, so a gap
-truncates the run and then panics on a nil function. If two branches both add version 7, one
-renumbers when rebasing.
+When you do, append the next integer key to the map in `internal/shared/database/migrations/`.
+
+⚠️ **Keys must be contiguous starting at 1.** The runner validates the map before applying anything
+and refuses to start with a message naming the missing version. If two branches both add version 7,
+one renumbers when rebasing.
 
 Declare a **local anonymous struct** inside the migration rather than referencing the domain model,
 so the migration stays frozen against later changes to that model. Migrations run automatically at
-boot and are recorded in `migration_records`.
+boot, inside a transaction, and are recorded in `migration_records`.
 
-Seeders re-run on every boot and must be idempotent — key on a natural unique column and upsert.
+Seeders re-run on every boot, so they must be **idempotent** — key on a natural unique column and
+upsert with `clause.OnConflict{DoNothing: true}` rather than counting first. They must also be
+**order-independent**: they come from an fx value group, which has no defined order, so a seeder
+that depends on another having already run will break the day someone adds a module.
 
 ---
 

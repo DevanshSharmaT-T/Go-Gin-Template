@@ -190,13 +190,19 @@ The `OnStart` hook order is load-bearing:
 2. Initialise the logger (and Sentry)
 3. Connect to PostgreSQL and ping it
 4. CREATE EXTENSION IF NOT EXISTS "uuid-ossp"
-5. Run versioned migrations               ← recorded in migration_records
-6. Run seeders                            ← idempotent, every boot
-7. Warm the permission registry           ← reads roles + permissions into memory
-8. Start the HTTP server
+5. AutoMigrate the models registry        ← the group:"models" value group
+6. Run versioned migrations               ← recorded in migration_records
+7. Run seeders                            ← idempotent, every boot
+8. Warm the permission registry           ← reads roles + permissions into memory
+9. Start the HTTP server
 ```
 
-Step 7 must follow step 6. The permission seeder populates the in-memory registry that authorization
+Steps 5 and 6 are the two schema mechanisms and they run in that order — see
+[Migrations](#migrations). Every step takes the start context, so fx's `StartTimeout` can actually
+cancel a migration blocked on a lock rather than leaving the process hanging. Raise that timeout
+past its 15-second default if seeding a fresh database takes longer than that.
+
+Step 8 must follow step 7. The permission seeder populates the in-memory registry that authorization
 reads; reverse them and the first login issues a token with an empty permission map, which fails
 closed — every protected route returns 403 until the process restarts.
 
@@ -269,6 +275,29 @@ that write their own `c.JSON(500, gin.H{"error": err.Error()})`:
 The `Internal` variant keeps the original error for the log and returns a generic message to the
 caller — that asymmetry is the point.
 
+### Absence is not always an error
+
+Two conventions live side by side here, and they are easy to read as a contradiction.
+
+A repository method that **looks something up** returns `(nil, nil)` when there is no such row.
+Absence is an ordinary answer to "is this email taken?", and the caller — a registration service
+that wants a *free* address — should not have to unwrap an error to hear the answer it was hoping
+for.
+
+```go
+// domain: nil, nil means "no such user"
+FindByEmail(ctx context.Context, email string) (*User, error)
+```
+
+A repository method that **operates on a specific row** — get-by-ID, update, delete — returns a
+`NOT_FOUND` `AppError`, because there the row is a precondition and its absence is the failure. The
+adapter builds that from `gorm.ErrRecordNotFound` via `database.TranslateError`, which is also where
+`23505` becomes a `CONFLICT`.
+
+The rule in one line: **the caller decides what missing means, so it is only an error when the
+caller asked for that row by name.** A lookup translates `gorm.ErrRecordNotFound` into `nil, nil`;
+everything else lets the translation stand.
+
 ---
 
 ## Auth and RBAC
@@ -333,7 +362,7 @@ revoke the user's access. Two gates close that, both reading in-memory state:
 ### The scaling limit — read this before you deploy replicas
 
 The permission registry is a **package-level singleton that fx does not manage**. It is process-local
-and rebuilt at boot, which is why step 7 of the boot sequence exists.
+and rebuilt at boot, which is why step 8 of the boot sequence exists.
 
 **Consequence: as written, this design is single-instance.** With two replicas behind a load
 balancer, a permission change or a suspension applied on replica A does not propagate to replica B,
@@ -355,15 +384,34 @@ cannot know about — but it must be a conscious decision, not a surprise.
 
 ## Migrations
 
-The schema's source of truth is **GORM struct tags plus `AutoMigrate`**, driven by a version map in
-`internal/shared/database/migrations/`, with applied versions recorded in `migration_records`. They
+The schema's source of truth is **GORM struct tags plus `AutoMigrate`**, extended by a version map in
+`internal/shared/database/migrations/`, with applied versions recorded in `migration_records`. Both
 run automatically at boot; there is no separate migrate command to forget.
 
-Two rules:
+### Two mechanisms, and which one you want
 
-**Keys must be contiguous from 1.** The runner iterates to `len(migrationMap)`, so a gap both
-truncates the run and then panics on a nil function. If you branch and two people both add version
-7, one of them renumbers.
+They are not alternatives — the boot sequence runs both, in this order.
+
+**`AutoMigrate` over the models registry** comes first. Every entity registered in the
+`group:"models"` value group is read for its GORM tags, and the table is created or widened to
+match. That covers the ordinary case — a new entity, a new column, a new index — with no file to
+edit and nothing to remember. It is purely additive: it will never drop a column, rename one, narrow
+a type, or add a constraint.
+
+**The versioned migrations** run second, and are for exactly the things `AutoMigrate` will not do:
+drops, renames, type changes, backfills and constraints. The version number then means something —
+"this database is at version 7" is a fact you can act on — which is why they never reference the
+models registry. The template ships an empty map; your first migration is version 1.
+
+The order matters in the obvious direction: a migration that alters a column can only run once
+`AutoMigrate` has created it.
+
+### Two rules
+
+**Keys must be contiguous from 1.** The runner validates the map before it applies anything, and
+refuses to start with a message naming the missing version — rather than walking up from 1, stopping
+at the hole, and leaving every later migration silently unapplied. If you branch and two people both
+add version 7, one of them renumbers.
 
 **Declare a local anonymous struct inside the migration.** Migrations must describe the schema *as
 it was at that version*. If migration 3 references `domain.User` and someone later adds a field to
@@ -380,10 +428,35 @@ history:
 },
 ```
 
-Seeders re-run on every boot and must be idempotent — key them on a natural unique column and
-upsert. The administrator seeder skips when `ADMIN_USERNAME`, `ADMIN_EMAIL` or `ADMIN_PASSWORD` is
-missing, and **logs a warning when it skips**, because a silent no-op here looks identical to a
-successful boot with no way to log in.
+Each migration and its `migration_records` row commit in one transaction. On PostgreSQL DDL is
+transactional, so a migration that fails halfway leaves neither a half-applied schema nor a version
+marked as applied that never was.
+
+### Seeders
+
+Seeders re-run on every boot, and two properties follow from that.
+
+**They must be idempotent** — key on a natural unique column and upsert, rather than counting first:
+`SELECT`-then-`INSERT` is two round trips and still loses to a second process starting at the same
+moment.
+
+```go
+return db.Clauses(clause.OnConflict{
+    Columns:   []clause.Column{{Name: "slug"}},
+    DoNothing: true,
+}).Create(&permissions).Error
+```
+
+**They must be order-independent.** Seeders arrive from an fx value group, and a value group has no
+defined order — it follows provider registration, which changes the day someone adds a module. A
+seeder that assumes another has already run works until it does not. If row B genuinely needs row A,
+insert both from the same seeder, or look A up by its natural key rather than by an ID you are
+hoping was assigned. When one does fail, the runner names the function in the error, because
+"seeder failed" against an unordered group of callbacks is not a starting point.
+
+The administrator seeder skips when `ADMIN_USERNAME`, `ADMIN_EMAIL` or `ADMIN_PASSWORD` is missing,
+and **logs a warning when it skips**, because a silent no-op here looks identical to a successful
+boot with no way to log in.
 
 ---
 
