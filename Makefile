@@ -73,8 +73,22 @@ test-db-up: ## Start a disposable PostgreSQL on :55433
 		-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=test -e POSTGRES_DB=app_test \
 		-p 55433:5432 postgres:16
 	@echo "waiting for postgres..."
-	@until docker exec $(TEST_DB_CONTAINER) pg_isready -U postgres -d app_test >/dev/null 2>&1; do sleep 1; done
-	@sleep 2
+	@# -h 127.0.0.1 is load-bearing. The postgres image runs a temporary server
+	@# during initialisation with listen_addresses='' — reachable over the Unix
+	@# socket but not over TCP — then shuts it down and starts the real one. A
+	@# plain `pg_isready` therefore reports ready roughly a second before the
+	@# server the tests connect to exists, and the suite starts against a
+	@# database that is about to restart under it. Asking over TCP is what tells
+	@# the two phases apart.
+	@n=0; until docker exec $(TEST_DB_CONTAINER) \
+			pg_isready -h 127.0.0.1 -U postgres -d app_test >/dev/null 2>&1; do \
+		n=$$((n+1)); \
+		if [ $$n -ge 60 ]; then \
+			echo "postgres did not become ready in 60s; try: docker logs $(TEST_DB_CONTAINER)" >&2; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done
 	@echo "ready: $(TEST_DATABASE_URL)"
 
 .PHONY: test-db-down

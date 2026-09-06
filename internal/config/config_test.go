@@ -3,6 +3,7 @@
 package config
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -31,19 +32,10 @@ func problems(t *testing.T, err error) []string {
 		t.Fatal("want a configuration error, got nil")
 	}
 	var verr *ValidationError
-	if !As(err, &verr) {
+	if !errors.As(err, &verr) {
 		t.Fatalf("want *ValidationError, got %T: %v", err, err)
 	}
 	return verr.Problems
-}
-
-// As is a tiny local helper so this file does not import the errors package.
-func As(err error, target **ValidationError) bool {
-	converted, ok := err.(*ValidationError)
-	if ok {
-		*target = converted
-	}
-	return ok
 }
 
 func assertMentions(t *testing.T, found []string, key string) {

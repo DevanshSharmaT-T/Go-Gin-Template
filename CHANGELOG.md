@@ -108,6 +108,28 @@ layer is library code that phase 4 wires up.
 - `.env.example` — `GO_ENV` now documents `test` as a fourth valid tier and notes that it is
   validated at startup.
 
+### Fixed
+
+- **`make lint` could never pass, on any commit.** Two staticcheck checks — `ST1023` and `QF1011`,
+  both "omit the redundant type from this declaration" — are the exact inverse of this project's
+  `var`-with-explicit-type rule, so every conforming declaration was a lint error. `gosec`'s `G101`
+  separately read the error-type vocabulary (`TypeInvalidCredentials`, `TypeTokenExpired`) as
+  hardcoded credentials. Both are now scoped exclusions in `.golangci.yml` with the reasoning next
+  to them, and `golangci-lint run` reports zero issues.
+- `.golangci.yml` now sets `build-tags: [integration, e2e]`. golangci-lint honours build
+  constraints, so the two suites that touch a real database were not being analysed at all.
+- `internal/config` — an unchecked `os.Setenv` return, a `WriteString(fmt.Sprintf(...))`, and a test
+  helper that type-asserted on an error instead of using `errors.As` (it would have missed a wrapped
+  `*ValidationError`).
+- **`make test-db-up` could return before PostgreSQL was actually accepting connections.** The
+  postgres image runs a temporary server during initialisation with `listen_addresses=''`, so
+  `pg_isready` over the Unix socket succeeds roughly a second before that server is shut down and
+  the real one starts. The `sleep 2` that followed usually covered the gap; when it did not, the
+  suite began against a database that then restarted underneath it, and the tests running at that
+  moment failed instantly for no visible reason. Both the Makefile and the CI service health check
+  now ask over TCP (`pg_isready -h 127.0.0.1`), which the temporary server does not answer, and the
+  Makefile wait is bounded with an actionable message instead of looping forever.
+
 ### Security
 
 - Configuration that would be unsafe is now a startup failure rather than a runtime surprise:

@@ -11,6 +11,12 @@ version: "2"
 run:
   timeout: 5m
   tests: true
+  # Without this the integration and e2e suites are invisible to the linter:
+  # golangci-lint honours build constraints, so every file behind a tag is
+  # simply not analysed. They are the suites that touch a real database.
+  build-tags:
+    - integration
+    - e2e
 
 linters:
   default: standard          # errcheck, govet, ineffassign, staticcheck, unused
@@ -40,6 +46,27 @@ linters:
         - name: exported
           disabled: true     # not every exported symbol needs a doc comment
 
+    staticcheck:
+      # golangci-lint's defaults, minus the two checks that contradict this
+      # project's own style rule. ST1023 and QF1011 both say "omit the redundant
+      # type from this declaration", which is the exact opposite of the
+      # var-with-explicit-type mandate in docs/ARCHITECTURE.md. Leaving them on
+      # would mean every conforming declaration is a lint error — hundreds of
+      # them — and a linter nobody can run clean is a linter nobody runs.
+      #
+      # If you drop the var mandate in your own fork, delete these two lines
+      # rather than the whole block: everything above them is the default.
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -ST1023
+        - -QF1011
+
   exclusions:
     rules:
       # Tests are allowed to be looser: unchecked errors on cleanup, hardcoded
@@ -54,6 +81,15 @@ linters:
         linters:
           - revive
           - staticcheck
+      # The error vocabulary is a list of classification strings —
+      # TypeInvalidCredentials, TypeTokenExpired — and gosec's G101 matches on
+      # the identifier name. They are wire-format constants, not credentials,
+      # and no secret will ever live in that file. Scoped to G101 so the rest of
+      # gosec still applies there.
+      - path: ^internal/shared/errors/type\.go$
+        text: G101
+        linters:
+          - gosec
 
 formatters:
   enable:

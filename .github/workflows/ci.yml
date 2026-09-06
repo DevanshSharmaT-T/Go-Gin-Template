@@ -53,8 +53,11 @@ jobs:
           POSTGRES_DB: app_test
         ports:
           - 55433:5432
+        # -h 127.0.0.1 matters: the image runs a temporary server over the Unix
+        # socket during initialisation, so a plain pg_isready reports healthy
+        # before the server the tests connect to has started. See test-db-up.
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10

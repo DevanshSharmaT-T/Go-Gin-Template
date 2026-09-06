@@ -442,7 +442,12 @@ func loadEnvFiles() (Environment, []string) {
 	// Restore the explicit choice: the tier files must not redefine which tier
 	// is in effect.
 	if explicitEnv != "" {
-		osSetenv(goEnvKey, explicitEnv)
+		// Discarded deliberately. os.Setenv fails only on a malformed key, and
+		// goEnvKey is a constant. The Environment returned below is what the
+		// rest of the process reads, so even a failure here could not change
+		// the tier that is actually in effect — only what a child process would
+		// inherit.
+		_ = osSetenv(goEnvKey, explicitEnv)
 		envName = strings.ToLower(explicitEnv)
 	}
 
@@ -465,7 +470,7 @@ type ValidationError struct {
 // operator sees on a failed boot.
 func (e *ValidationError) Error() string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("invalid configuration (%d problem(s)):", len(e.Problems)))
+	fmt.Fprintf(&b, "invalid configuration (%d problem(s)):", len(e.Problems))
 
 	var problem string
 	for _, problem = range e.Problems {

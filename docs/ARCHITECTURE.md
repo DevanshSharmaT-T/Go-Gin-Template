@@ -555,6 +555,11 @@ Table-driven tests are dominated by short-lived locals whose types are obvious f
 next to them, and applying the mandate there adds noise for no clarity. `test/harness` and
 `test/fixtures` are test infrastructure and follow the same relaxed rule.
 
+**The linter knows about this.** staticcheck's `ST1023` and `QF1011` both say "omit the redundant
+type from this declaration", which is precisely the opposite of the rule above, so both are disabled
+in [`.golangci.yml`](../.golangci.yml). If you drop the mandate in your own fork, delete those two
+lines and the linter agrees with you again.
+
 ### The rest
 
 - **Pointers for domain entities, DTOs and errors.** `nil` is the "not found" signal, which
