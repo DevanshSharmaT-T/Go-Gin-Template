@@ -1,0 +1,65 @@
+# golangci-lint configuration.
+#
+# This file IS committed on purpose: a linter config that only exists on one
+# machine produces results nobody else can reproduce, and CI silently enforces
+# a different rule set than the one developers see.
+#
+#   golangci-lint run        (or: make lint)
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard          # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose              # HTTP response bodies must be closed
+    - contextcheck           # context must be propagated, not dropped
+    - errorlint              # use errors.Is/As instead of == and type asserts
+    - gosec                  # common security mistakes
+    - misspell
+    - noctx                  # no HTTP requests without a context
+    - nilerr                 # do not return nil when err is non-nil
+    - revive                 # style: naming, exported comments, early returns
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - wastedassign
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    gosec:
+      excludes:
+        # G104 overlaps with errcheck; keep one source of truth.
+        - G104
+    revive:
+      rules:
+        - name: exported
+          disabled: true     # not every exported symbol needs a doc comment
+
+  exclusions:
+    rules:
+      # Tests are allowed to be looser: unchecked errors on cleanup, hardcoded
+      # credentials against a disposable database, long table-driven funcs.
+      - path: (_test\.go|^test/)
+        linters:
+          - errcheck
+          - gosec
+          - noctx
+      # Generated mocks are not ours to lint.
+      - path: ^internal/mocks/
+        linters:
+          - revive
+          - staticcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/DevanshSharmaT-T/Go-Gin-Template
